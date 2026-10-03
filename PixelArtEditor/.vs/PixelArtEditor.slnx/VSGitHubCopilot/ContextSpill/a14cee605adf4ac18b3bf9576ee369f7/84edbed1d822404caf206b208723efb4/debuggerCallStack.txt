@@ -1,0 +1,206 @@
+﻿Thread ID: 19148
+[1] [Исключение] System.Private.CoreLib.dll!System.RuntimeType.CreateInstanceImpl
+This is the current user focused stack frame. The provided locals context corresponds to this stack frame, but you may evaluate expressions and retrieve code for any frame.
+Code for the stack frame:
+```csharp C:\Users\lolol\AppData\Local\Temp\.vsdbgsrc\827c6834136e07a544e821d6bac254effec7f031dd9b47e56d45417f000f72ef\RuntimeType.cs
+3546: 	internal object CreateInstanceImpl(BindingFlags bindingAttr, Binder binder, object[] args, CultureInfo culture)
+3547: 	{
+3548: 		CreateInstanceCheckThis();
+3549: 		if (args == null)
+3550: 		{
+3551: 			args = Array.Empty<object>();
+3552: 		}
+3553: 		if (binder == null)
+3554: 		{
+3555: 			binder = Type.DefaultBinder;
+3556: 		}
+3557: 		bool publicOnly = (bindingAttr & BindingFlags.NonPublic) == 0;
+3558: 		bool wrapExceptions = (bindingAttr & BindingFlags.DoNotWrapExceptions) == 0;
+3559: 		object result;
+3560: 		if (args.Length == 0 && (bindingAttr & BindingFlags.Public) != BindingFlags.Default && (bindingAttr & BindingFlags.Instance) != BindingFlags.Default && (IsGenericCOMObjectImpl() || base.IsValueType))
+3561: 		{
+3562: 			result = CreateInstanceDefaultCtor(publicOnly, wrapExceptions);
+3563: 		}
+3564: 		else
+3565: 		{
+3566: 			ListBuilder<ConstructorInfo> constructorCandidates = GetConstructorCandidates(null, bindingAttr, CallingConventions.Any, null, allowPrefixLookup: false);
+3567: 			MethodBase[] array = new MethodBase[constructorCandidates.Count];
+3568: 			int num = 0;
+3569: 			Type[] array2 = ((args.Length != 0) ? new Type[args.Length] : Type.EmptyTypes);
+3570: 			for (int i = 0; i < args.Length; i++)
+3571: 			{
+3572: 				object obj = args[i];
+3573: 				if (obj != null)
+3574: 				{
+3575: 					array2[i] = obj.GetType();
+3576: 				}
+3577: 			}
+3578: 			for (int j = 0; j < constructorCandidates.Count; j++)
+3579: 			{
+3580: 				if (FilterApplyConstructorInfo((RuntimeConstructorInfo)constructorCandidates[j], bindingAttr, CallingConventions.Any, array2))
+3581: 				{
+3582: 					array[num++] = constructorCandidates[j];
+3583: 				}
+3584: 			}
+3585: 			if (num == 0)
+3586: 			{
+3587: 				throw new MissingMethodException(SR.Format(SR.MissingConstructor_Name, FullName));
+3588: 			}
+3589: 			if (num != array.Length)
+3590: 			{
+3591: 				Array.Resize(ref array, num);
+3592: 			}
+3593: 			MethodBase methodBase;
+3594: 			object state;
+3595: 			try
+3596: 			{
+3597: 				methodBase = binder.BindToMethod(bindingAttr, array, ref args, null, culture, null, out state);
+3598: 			}
+3599: 			catch (MissingMethodException inner)
+3600: 			{
+3601: 				throw new MissingMethodException(SR.Format(SR.MissingConstructor_Name, FullName), inner);
+3602: 			}
+3603: 			if ((object)methodBase == null)
+3604: 			{
+3605: 				throw new MissingMethodException(SR.Format(SR.MissingConstructor_Name, FullName));
+3606: 			}
+3607: 			if (methodBase.GetParametersAsSpan().Length == 0)
+3608: 			{
+3609: 				if (args.Length != 0)
+3610: 				{
+3611: 					throw new NotSupportedException(SR.NotSupported_CallToVarArg);
+3612: 				}
+3613: 				result = CreateInstanceLocal(wrapExceptions);
+3614: 			}
+3615: 			else
+3616: 			{
+3617: 				result = ((ConstructorInfo)methodBase).Invoke(bindingAttr, binder, args, culture);
+3618: 				if (state != null)
+3619: 				{
+3620: 					binder.ReorderArgumentArray(ref args, state);
+3621: 				}
+3622: 			}
+3623: 		}
+3624: 		return result;
+3625: 		[UnconditionalSuppressMessage("ReflectionAnalysis", "IL2082:UnrecognizedReflectionPattern", Justification = "Implementation detail of Activator that linker intrinsically recognizes")]
+3626: 		object CreateInstanceLocal(bool wrapExceptions2)
+3627: 		{
+3628: 			return Activator.CreateInstance(this, nonPublic: true, wrapExceptions2);
+3629: 		}
+3630: 	}
+```
+Current statement: line 3613
+[2] [Исключение] System.Xaml.dll!MS.Internal.Xaml.Runtime.ClrObjectRuntime.CreateInstance
+[3] [Исключение] System.Xaml.dll!System.Xaml.XamlObjectWriter.Logic_CreateAndAssignToParentStart
+[4] [Исключение] System.Xaml.dll!System.Xaml.XamlObjectWriter.WriteStartMember
+[5] [Исключение] PresentationFramework.dll!System.Windows.Markup.WpfXamlLoader.TransformNodes
+[6] [Исключение] PresentationFramework.dll!System.Windows.Markup.WpfXamlLoader.Load
+[7] [Исключение] PresentationFramework.dll!System.Windows.Markup.WpfXamlLoader.LoadBaml
+[8] [Исключение] PresentationFramework.dll!System.Windows.Markup.XamlReader.LoadBaml
+[9] [Исключение] PresentationFramework.dll!System.Windows.Application.LoadBamlStreamWithSyncInfo
+[10] [Исключение] PresentationFramework.dll!System.Windows.Application.DoStartup
+[11] [Исключение] PresentationFramework.dll!System.Windows.Application..ctor.AnonymousMethod__1_0
+[12] [Исключение] WindowsBase.dll!System.Windows.Threading.ExceptionWrapper.InternalRealCall
+[13] [Исключение] WindowsBase.dll!System.Windows.Threading.ExceptionWrapper.TryCatchWhen
+[14] [Исключение] WindowsBase.dll!System.Windows.Threading.DispatcherOperation.InvokeImpl
+[15] [Исключение] WindowsBase.dll!MS.Internal.CulturePreservingExecutionContext.CallbackWrapper
+[16] [Исключение] System.Private.CoreLib.dll!System.Threading.ExecutionContext.RunInternal
+Code for the stack frame:
+```csharp C:\Users\lolol\AppData\Local\Temp\.vsdbgsrc\7359755a63a0eef4e8a101bde875a0a6c6013760bb23441bb9b04a92876a282b\ExecutionContext.cs
+117: 	internal static void RunInternal(ExecutionContext executionContext, ContextCallback callback, object state)
+118: 	{
+119: 		Thread currentThread = Thread.CurrentThread;
+120: 		ExecutionContext executionContext2 = currentThread._executionContext;
+121: 		if (executionContext2 != null && executionContext2.m_isDefault)
+122: 		{
+123: 			executionContext2 = null;
+124: 		}
+125: 		ExecutionContext executionContext3 = executionContext2;
+126: 		SynchronizationContext synchronizationContext = currentThread._synchronizationContext;
+127: 		if (executionContext != null && executionContext.m_isDefault)
+128: 		{
+129: 			executionContext = null;
+130: 		}
+131: 		if (executionContext3 != executionContext)
+132: 		{
+133: 			RestoreChangedContextToThread(currentThread, executionContext, executionContext3);
+134: 		}
+135: 		ExceptionDispatchInfo exceptionDispatchInfo = null;
+136: 		try
+137: 		{
+138: 			callback(state);
+139: 		}
+140: 		catch (Exception source)
+141: 		{
+142: 			exceptionDispatchInfo = ExceptionDispatchInfo.Capture(source);
+143: 		}
+144: 		if (currentThread._synchronizationContext != synchronizationContext)
+145: 		{
+146: 			currentThread._synchronizationContext = synchronizationContext;
+147: 		}
+148: 		ExecutionContext executionContext4 = currentThread._executionContext;
+149: 		if (executionContext4 != executionContext3)
+150: 		{
+151: 			RestoreChangedContextToThread(currentThread, executionContext3, executionContext4);
+152: 		}
+153: 		exceptionDispatchInfo?.Throw();
+154: 	}
+```
+Current statement: line 138
+[17] [Исключение] System.Private.CoreLib.dll!System.Threading.ExecutionContext.RunInternal
+Code for the stack frame:
+```csharp C:\Users\lolol\AppData\Local\Temp\.vsdbgsrc\7359755a63a0eef4e8a101bde875a0a6c6013760bb23441bb9b04a92876a282b\ExecutionContext.cs
+117: 	internal static void RunInternal(ExecutionContext executionContext, ContextCallback callback, object state)
+118: 	{
+119: 		Thread currentThread = Thread.CurrentThread;
+120: 		ExecutionContext executionContext2 = currentThread._executionContext;
+121: 		if (executionContext2 != null && executionContext2.m_isDefault)
+122: 		{
+123: 			executionContext2 = null;
+124: 		}
+125: 		ExecutionContext executionContext3 = executionContext2;
+126: 		SynchronizationContext synchronizationContext = currentThread._synchronizationContext;
+127: 		if (executionContext != null && executionContext.m_isDefault)
+128: 		{
+129: 			executionContext = null;
+130: 		}
+131: 		if (executionContext3 != executionContext)
+132: 		{
+133: 			RestoreChangedContextToThread(currentThread, executionContext, executionContext3);
+134: 		}
+135: 		ExceptionDispatchInfo exceptionDispatchInfo = null;
+136: 		try
+137: 		{
+138: 			callback(state);
+139: 		}
+140: 		catch (Exception source)
+141: 		{
+142: 			exceptionDispatchInfo = ExceptionDispatchInfo.Capture(source);
+143: 		}
+144: 		if (currentThread._synchronizationContext != synchronizationContext)
+145: 		{
+146: 			currentThread._synchronizationContext = synchronizationContext;
+147: 		}
+148: 		ExecutionContext executionContext4 = currentThread._executionContext;
+149: 		if (executionContext4 != executionContext3)
+150: 		{
+151: 			RestoreChangedContextToThread(currentThread, executionContext3, executionContext4);
+152: 		}
+153: 		exceptionDispatchInfo?.Throw();
+154: 	}
+```
+Current statement: line 153
+[18] [Исключение] WindowsBase.dll!MS.Internal.CulturePreservingExecutionContext.Run
+[19] [Исключение] WindowsBase.dll!System.Windows.Threading.DispatcherOperation.Invoke
+[20] [Исключение] WindowsBase.dll!System.Windows.Threading.Dispatcher.ProcessQueue
+[21] [Исключение] WindowsBase.dll!System.Windows.Threading.Dispatcher.WndProcHook
+[22] [Исключение] WindowsBase.dll!MS.Win32.HwndWrapper.WndProc
+[23] [Исключение] WindowsBase.dll!MS.Win32.HwndSubclass.DispatcherCallbackOperation
+[24] [Исключение] WindowsBase.dll!System.Windows.Threading.ExceptionWrapper.InternalRealCall
+[25] [Исключение] WindowsBase.dll!System.Windows.Threading.ExceptionWrapper.TryCatchWhen
+[26] [Исключение] WindowsBase.dll!System.Windows.Threading.Dispatcher.LegacyInvokeImpl
+[27] [Исключение] WindowsBase.dll!System.Windows.Threading.Dispatcher.Invoke
+[28] [Исключение] WindowsBase.dll!MS.Win32.HwndSubclass.SubclassWndProc
+[29] [Переход от управляемого кода к машинному]
+[30] WindowsBase.dll!System.Windows.Threading.Dispatcher.PushFrameImpl
+........3 more stack frames omitted.

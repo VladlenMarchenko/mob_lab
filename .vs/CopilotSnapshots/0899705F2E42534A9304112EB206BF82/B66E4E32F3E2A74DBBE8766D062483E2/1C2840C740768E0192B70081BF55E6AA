@@ -1,0 +1,72 @@
+﻿# План работы и разбор MainWindow — PixelArtEditor
+
+## Understanding
+
+`MainWindow.xaml` описывает интерфейс редактора, а `MainWindow.xaml.cs` содержит логику. Изображение хранится в `Color[,]`; после изменения массива вызывается `RenderCanvas`, создающий `RenderTargetBitmap` для `PixelCanvas`.
+
+## Assumptions
+
+- Холст поддерживает 16x16, 24x24, 32x32, 48x48 и 64x64.
+- Масштаб меняет отображение, но не логические координаты.
+- «Лапка» перемещает холст через `ScrollViewer`.
+
+## Approach
+
+XAML содержит кнопки, инструменты, выбор цвета, размера, масштаб и `ScrollViewer`. C# изменяет массив цветов, рисует пиксели и фигуры по сетке, отображает результат и экспортирует PNG через `PngBitmapEncoder`.
+
+## Key Files
+
+- `MainWindow.xaml` — интерфейс и события.
+- `MainWindow.xaml.cs` — рисование, PNG, размеры, масштаб и панорамирование.
+- `PixelArtEditor.csproj` — конфигурация WPF.
+
+## Risks
+
+- При смене размера создаётся новый пустой холст.
+- После каждого изменения перерисовывается весь холст.
+
+# Steps
+
+## Step 1. Интерфейс
+
+`Window` связывает XAML с классом `MainWindow`. Верхняя панель вызывает `Clear_Click`, `Fill_Click` и `SavePng_Click`. `RadioButton` выбирают `Pixel`, `Line`, `Square`, `Triangle` или `Pan` через `Tag`. `ColorSelector` выбирает цвет из HEX-значения. `CanvasSizeSelector` передаёт размер вроде `32,32`. `ZoomSlider` задаёт масштаб от 50% до 400%. `CanvasScrollViewer` содержит `Image PixelCanvas` и даёт возможность прокрутки.
+
+## Step 2. Модель
+
+`DrawingTool` перечисляет инструменты. `_canvasWidth` и `_canvasHeight` хранят размер холста, `_zoom` — масштаб, `_pixels` — массив цветов, `_previewPixels` — копия для предпросмотра фигур. Конструктор вызывает `InitializeComponent`, `ClearPixels` и `RenderCanvas`.
+
+## Step 3. Рисование
+
+`GetPixelPosition` переводит координаты мыши по формуле `position / (CellSize * _zoom)`. `SetPixel` проверяет границы и записывает `_currentColor`. `DrawLine` использует алгоритм Брезенхэма. `DrawSquare` рисует четыре стороны, а `DrawTriangle` соединяет три вершины. Фигуры сначала рисуются в `_previewPixels`, а после отпускания мыши копируются в `_pixels`.
+
+## Step 4. Отрисовка
+
+`RenderCanvasBitmap` создаёт `DrawingVisual`, проходит по массиву и рисует клетки через `DrawRectangle`. Затем `RenderTargetBitmap` устанавливается в `PixelCanvas.Source`. Размер изображения вычисляется с учётом ширины, высоты и `CellSize`.
+
+## Step 5. Новые изменения
+
+### Сохранение PNG
+
+`SavePng_Click` открывает `SaveFileDialog`, создаёт `PngBitmapEncoder`, добавляет `RenderCanvasBitmap(_pixels)` и сохраняет файл через `FileStream`.
+
+### Размер холста
+
+`CanvasSizeSelector_SelectionChanged` читает ширину и высоту из `Tag`, создаёт новый `Color[,]`, очищает его и запускает отрисовку.
+
+### Масштаб
+
+`ZoomSlider_ValueChanged` меняет `_zoom`. Размер `PixelCanvas` пересчитывается с учётом `CellSize` и масштаба.
+
+### Лапка
+
+`PixelCanvas_MouseDown` сохраняет начальную позицию и offsets `ScrollViewer`. `PixelCanvas_MouseMove` изменяет `ScrollToHorizontalOffset` и `ScrollToVerticalOffset`. Пиксели при этом не изменяются.
+
+## Step 6. Новые изменения — кратко
+
+1. PNG-экспорт.
+2. Выбор размеров 16x16–64x64.
+3. Динамический массив цветов.
+4. Масштаб 50–400%.
+5. Инструмент «Лапка».
+6. Панорамирование через `ScrollViewer`.
+7. Учёт масштаба при расчёте координат мыши.

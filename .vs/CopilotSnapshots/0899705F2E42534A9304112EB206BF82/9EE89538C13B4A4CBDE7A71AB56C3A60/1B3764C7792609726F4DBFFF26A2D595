@@ -1,0 +1,228 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Windows;
+using System.Windows.Input; // Нужно для событий мыши
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+
+namespace RoadEditor
+{
+    public enum TileType
+    {
+        Grass,
+        GrassWithBush,
+        RoadHorizontal,
+        RoadVertical,
+        Intersection,
+        CrosswalkHorizontal,
+        CrosswalkVertical
+    }
+
+    public partial class MainWindow : Window
+    {
+        private const int TileSize = 100;
+        private Dictionary<TileType, BitmapSource> _tileSet;
+        private Random _random;
+
+        
+        private TileType[,] _logicalMap;    
+        private int _mapWidth = 26;         // Ширина 
+        private int _mapHeight = 16;        // Высота 
+        private TileType _currentTool = TileType.Grass; 
+
+        public MainWindow()
+        {
+            InitializeComponent();
+            _tileSet = new Dictionary<TileType, BitmapSource>();
+            _random = new Random();
+
+            InitializeTileSet();
+            CreateEmptyMap(); // Создаем пустую зеленую карту при запуске программы
+        }
+
+        // обработка кнопок
+
+        private void GenerateMap_Click(object sender, RoutedEventArgs e)
+        {
+            GenerateRandomLogicalMap();
+            RenderCurrentMap();
+        }
+
+        private void ClearMap_Click(object sender, RoutedEventArgs e)
+        {
+            CreateEmptyMap();
+        }
+
+        // рисование мышью 
+
+        private void Tool_Checked(object sender, RoutedEventArgs e)
+        {
+            // Обновляем текущий инструмент при клике по радиокнопке 
+            if (sender is System.Windows.Controls.RadioButton rb && rb.Tag != null)
+            {
+                if (Enum.TryParse(rb.Tag.ToString(), out TileType selectedTool))
+                {
+                    _currentTool = selectedTool;
+                }
+            }
+        }
+
+        private void MapDisplay_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // 1 клик
+            DrawTileAtMousePosition(e.GetPosition(MapDisplay));
+        }
+
+        private void MapDisplay_MouseMove(object sender, MouseEventArgs e)
+        {
+            // мыш как кись
+            if (e.LeftButton == MouseButtonState.Pressed)
+            {
+                DrawTileAtMousePosition(e.GetPosition(MapDisplay));
+            }
+        }
+
+        private void DrawTileAtMousePosition(Point mousePos)
+        {
+            if (_logicalMap == null) return;
+
+            // индексы массива сетки
+            int gridX = (int)(mousePos.X / TileSize);
+            int gridY = (int)(mousePos.Y / TileSize);
+
+            // проверка границ
+            if (gridX >= 0 && gridX < _mapWidth && gridY >= 0 && gridY < _mapHeight)
+            {
+                
+                if (_logicalMap[gridX, gridY] != _currentTool)
+                {
+                    _logicalMap[gridX, gridY] = _currentTool;
+                    RenderCurrentMap();
+                }
+            }
+        }
+
+        // генирация
+
+        private void InitializeTileSet()
+        {
+            _tileSet.Clear();
+            _tileSet[TileType.Grass] = TileGenerator.CreateGrass();
+            _tileSet[TileType.GrassWithBush] = TileGenerator.CreateGrassWithBush();
+            _tileSet[TileType.RoadHorizontal] = TileGenerator.CreateRoadHorizontal();
+            _tileSet[TileType.RoadVertical] = TileGenerator.CreateRoadVertical();
+            _tileSet[TileType.Intersection] = TileGenerator.CreateIntersection();
+            _tileSet[TileType.CrosswalkHorizontal] = TileGenerator.CreateCrosswalkHorizontal();
+            _tileSet[TileType.CrosswalkVertical] = TileGenerator.CreateCrosswalkVertical();
+        }
+
+        private void CreateEmptyMap()
+        {
+            _logicalMap = new TileType[_mapWidth, _mapHeight];
+            for (int x = 0; x < _mapWidth; x++)
+                for (int y = 0; y < _mapHeight; y++)
+                    _logicalMap[x, y] = TileType.Grass;
+
+            RenderCurrentMap();
+        }
+
+        private void GenerateRandomLogicalMap()
+        {
+            // Заполняем глобальную карту травой
+            for (int x = 0; x < _mapWidth; x++)
+                for (int y = 0; y < _mapHeight; y++)
+                    _logicalMap[x, y] = TileType.Grass;
+
+            List<int> horizontalRoads = new List<int>();
+            for (int y = 2; y < _mapHeight - 2; y += _random.Next(6, 9))
+                horizontalRoads.Add(y);
+
+            List<int> verticalRoads = new List<int>();
+            for (int x = 2; x < _mapWidth - 2; x += _random.Next(6, 9))
+                verticalRoads.Add(x);
+
+            foreach (int y in horizontalRoads)
+            {
+                for (int x = 0; x < _mapWidth; x++)
+                    _logicalMap[x, y] = TileType.RoadHorizontal;
+            }
+
+            foreach (int x in verticalRoads)
+            {
+                for (int y = 0; y < _mapHeight; y++)
+                {
+                    if (_logicalMap[x, y] == TileType.RoadHorizontal)
+                        _logicalMap[x, y] = TileType.Intersection;
+                    else
+                        _logicalMap[x, y] = TileType.RoadVertical;
+                }
+            }
+
+            for (int x = 0; x < _mapWidth; x++)
+            {
+                for (int y = 0; y < _mapHeight; y++)
+                {
+                    if (_logicalMap[x, y] == TileType.Intersection)
+                    {
+                        if (x > 0 && _logicalMap[x - 1, y] == TileType.RoadHorizontal)
+                            _logicalMap[x - 1, y] = TileType.CrosswalkHorizontal;
+
+                        if (x < _mapWidth - 1 && _logicalMap[x + 1, y] == TileType.RoadHorizontal)
+                            _logicalMap[x + 1, y] = TileType.CrosswalkHorizontal;
+
+                        if (y > 0 && _logicalMap[x, y - 1] == TileType.RoadVertical)
+                            _logicalMap[x, y - 1] = TileType.CrosswalkVertical;
+
+                        if (y < _mapHeight - 1 && _logicalMap[x, y + 1] == TileType.RoadVertical)
+                            _logicalMap[x, y + 1] = TileType.CrosswalkVertical;
+                    }
+                }
+            }
+
+            for (int x = 0; x < _mapWidth; x++)
+            {
+                for (int y = 0; y < _mapHeight; y++)
+                {
+                    if (_logicalMap[x, y] == TileType.Grass)
+                    {
+                        bool isNearRoad =
+                            (x > 0 && IsRoad(_logicalMap[x - 1, y])) ||
+                            (x < _mapWidth - 1 && IsRoad(_logicalMap[x + 1, y])) ||
+                            (y > 0 && IsRoad(_logicalMap[x, y - 1])) ||
+                            (y < _mapHeight - 1 && IsRoad(_logicalMap[x, y + 1]));
+
+                        if (!isNearRoad && _random.NextDouble() < 0.05)
+                            _logicalMap[x, y] = TileType.GrassWithBush;
+                    }
+                }
+            }
+        }
+
+        private bool IsRoad(TileType t)
+        {
+            return t == TileType.RoadHorizontal || t == TileType.RoadVertical || t == TileType.Intersection;
+        }
+
+        private void RenderCurrentMap()
+        {
+            int widthPx = _mapWidth * TileSize;
+            int heightPx = _mapHeight * TileSize;
+
+            RenderTargetBitmap rtb = new RenderTargetBitmap(widthPx, heightPx, 96, 96, PixelFormats.Pbgra32);
+            DrawingVisual visual = new DrawingVisual();
+            using (DrawingContext ctx = visual.RenderOpen())
+            {
+                for (int x = 0; x < _mapWidth; x++)
+                {
+                    for (int y = 0; y < _mapHeight; y++)
+                    {
+                        BitmapSource tile = _tileSet[_logicalMap[x, y]];
+                        ctx.DrawImage(tile, new Rect(x * TileSize, y * TileSize, TileSize, TileSize));
+                    }
+                }
+            }
+            rtb.Render(visual);
+            MapDisplay.Source = rtb;
+        }
+    }
+}

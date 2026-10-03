@@ -1,0 +1,534 @@
+﻿# Разбор MainWindow в RoadEditor
+
+Документ описывает текущую реализацию:
+
+- `MainWindow.xaml` — интерфейс редактора дорог;
+- `MainWindow.xaml.cs` — логика карты, генерации, рисования, масштаба и сохранения;
+- `TileGenerator.cs` — источник графики отдельных тайлов, который используется `MainWindow`.
+
+---
+
+# 1. Общая архитектура
+
+Редактор разделяет карту на логическую модель и изображение.
+
+Логическая модель хранится в двумерном массиве:
+
+```csharp
+private TileType[,] _logicalMap;
+```
+
+В каждой клетке находится не картинка, а тип тайла: трава, дорога, перекрёсток или переход.
+
+Готовые изображения тайлов хранятся в словаре:
+
+```csharp
+private Dictionary<TileType, BitmapSource> _tileSet;
+```
+
+Во время отрисовки программа:
+
+1. получает тип тайла из `_logicalMap`;
+2. находит соответствующее изображение в `_tileSet`;
+3. помещает его в нужную позицию большой карты;
+4. устанавливает итоговое изображение в `MapDisplay`.
+
+---
+
+# 2. Файл MainWindow.xaml
+
+## Окно
+
+```xml
+<Window x:Class="RoadEditor.MainWindow"
+		Title="Road Editor"
+		Height="700"
+		Width="1000">
+```
+
+XAML связан с классом `MainWindow` из code-behind.
+
+Задаются:
+
+- заголовок окна;
+- ширина и высота;
+- запуск по центру экрана.
+
+## Структура Grid
+
+Окно разделено на три строки:
+
+```xml
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="Auto"/>
+<RowDefinition Height="*"/>
+```
+
+- первая строка — управление картой;
+- вторая строка — инструменты ручного рисования;
+- третья строка — карта.
+
+## Кнопки верхней панели
+
+```xml
+<Button Content="Сгенерировать дороги"
+		Click="GenerateMap_Click" />
+```
+
+Запускает случайную генерацию связной дорожной сети.
+
+```xml
+<Button Content="Очистить карту"
+		Click="ClearMap_Click" />
+```
+
+Создаёт чистую карту, заполненную травой.
+
+```xml
+<Button Content="Сохранить PNG"
+		Click="SavePng_Click" />
+```
+
+Открывает диалог сохранения и экспортирует карту в PNG.
+
+## Выбор размера
+
+```xml
+<ComboBox x:Name="MapSizeSelector"
+		  SelectionChanged="MapSizeSelector_SelectionChanged">
+```
+
+Доступные размеры:
+
+- 12×8;
+- 18×12;
+- 26×16;
+- 32×20;
+- 40×24.
+
+В `Tag` хранится пара чисел, например:
+
+```xml
+<ComboBoxItem Content="26 x 16" Tag="26,16"/>
+```
+
+## Масштаб
+
+```xml
+<Slider x:Name="ZoomSlider"
+		Minimum="0.5"
+		Maximum="2.5"
+		Value="1"
+		ValueChanged="ZoomSlider_ValueChanged" />
+```
+
+Ползунок изменяет масштаб отображения карты от 50% до 250%.
+
+Текущее значение выводится в `ZoomLabel`.
+
+## Инструменты карты
+
+Во второй строке находятся `RadioButton`:
+
+- трава;
+- куст;
+- горизонтальная дорога;
+- вертикальная дорога;
+- перекрёсток;
+- горизонтальная зебра;
+- вертикальная зебра.
+
+Например:
+
+```xml
+<RadioButton Content="Дорога ➖"
+			 Tag="RoadHorizontal"
+			 Checked="Tool_Checked" />
+```
+
+`Tag` определяет значение `TileType`, которое будет записываться в карту.
+
+## Рабочая область
+
+```xml
+<ScrollViewer Grid.Row="2"
+			  HorizontalScrollBarVisibility="Auto"
+			  VerticalScrollBarVisibility="Auto">
+	<Image x:Name="MapDisplay" ... />
+</ScrollViewer>
+```
+
+`ScrollViewer` нужен, потому что карта может быть больше окна.
+
+`Image` получает готовое изображение через:
+
+```csharp
+MapDisplay.Source = bitmap;
+```
+
+События мыши позволяют рисовать выбранным тайлом.
+
+---
+
+# 3. Файл MainWindow.xaml.cs
+
+## Перечисление TileType
+
+```csharp
+public enum TileType
+{
+	Grass,
+	GrassWithBush,
+	RoadHorizontal,
+	RoadVertical,
+	Intersection,
+	CrosswalkHorizontal,
+	CrosswalkVertical
+}
+```
+
+Это список всех объектов, которые можно разместить в клетке карты.
+
+Преимущество enum в том, что логическая карта хранит компактные значения, а не отдельные большие изображения.
+
+## Основные поля
+
+```csharp
+private const int TileSize = 100;
+```
+
+Размер одного тайла в пикселях.
+
+```csharp
+private readonly Dictionary<TileType, BitmapSource> _tileSet = new();
+```
+
+Словарь готовых изображений. Например, `TileType.RoadVertical` связан с изображением вертикальной дороги.
+
+```csharp
+private readonly Random _random = new();
+```
+
+Используется для случайного выбора мест дорог и кустов.
+
+```csharp
+private TileType[,] _logicalMap = new TileType[26, 16];
+```
+
+Двумерная модель карты.
+
+```csharp
+private int _mapWidth = 26;
+private int _mapHeight = 16;
+```
+
+Текущие размеры карты в клетках.
+
+```csharp
+private double _zoom = 1;
+```
+
+Масштаб отображения.
+
+```csharp
+private TileType _currentTool = TileType.Grass;
+```
+
+Выбранный пользователем инструмент.
+
+## Конструктор
+
+```csharp
+public MainWindow()
+{
+	InitializeComponent();
+	InitializeTileSet();
+	CreateEmptyMap();
+}
+```
+
+При запуске:
+
+1. загружается XAML-интерфейс;
+2. создаются изображения тайлов;
+3. создаётся пустая карта;
+4. карта выводится на экран.
+
+## Инициализация тайлов
+
+```csharp
+private void InitializeTileSet()
+```
+
+Метод вызывает методы `TileGenerator`:
+
+```csharp
+_tileSet[TileType.Grass] = TileGenerator.CreateGrass();
+_tileSet[TileType.RoadHorizontal] = TileGenerator.CreateRoadHorizontal();
+_tileSet[TileType.Intersection] = TileGenerator.CreateIntersection();
+```
+
+Тайлы создаются один раз и затем повторно используются при рендеринге.
+
+## Выбор инструмента
+
+```csharp
+private void Tool_Checked(...)
+```
+
+Метод получает строку из `RadioButton.Tag`, преобразует её в `TileType` и записывает в `_currentTool`.
+
+Например:
+
+```text
+Tag="RoadVertical"
+		↓
+TileType.RoadVertical
+		↓
+_currentTool
+```
+
+## Ручное рисование
+
+При нажатии мыши вызывается:
+
+```csharp
+DrawTileAtMousePosition(e.GetPosition(MapDisplay));
+```
+
+Координаты мыши передаются в отдельный метод.
+
+При движении мыши с зажатой кнопкой тот же метод вызывается повторно, поэтому инструмент работает как кисть.
+
+## Перевод координат
+
+```csharp
+int x = (int)(position.X / (_zoom * TileSize));
+int y = (int)(position.Y / (_zoom * TileSize));
+```
+
+Координаты экрана переводятся в координаты клетки.
+
+Например, при размере тайла 100 и масштабе 200%:
+
+```text
+координата мыши X = 450
+450 / (100 × 2) = 2
+```
+
+Значит, пользователь работает со столбцом 2.
+
+После проверки границ выбранный тайл записывается в `_logicalMap`.
+
+---
+
+# 4. Генерация случайной дорожной сети
+
+## Запуск генерации
+
+```csharp
+private void GenerateMap_Click(...)
+{
+	GenerateRandomLogicalMap();
+	RenderCurrentMap();
+}
+```
+
+Сначала меняется логическая модель, затем она перерисовывается.
+
+## Очистка перед генерацией
+
+Вся карта сначала заполняется травой:
+
+```csharp
+for (int x = 0; x < _mapWidth; x++)
+	for (int y = 0; y < _mapHeight; y++)
+		_logicalMap[x, y] = TileType.Grass;
+```
+
+Это гарантирует, что новая генерация не смешивается с предыдущей картой.
+
+## Выбор горизонтальных и вертикальных дорог
+
+```csharp
+List<int> rows = ChooseRoadCoordinates(...);
+List<int> columns = ChooseRoadCoordinates(...);
+```
+
+`rows` содержит номера строк горизонтальных дорог.
+
+`columns` содержит номера столбцов вертикальных дорог.
+
+## Минимальное расстояние
+
+Метод `ChooseRoadCoordinates` не выбирает дороги вплотную друг к другу.
+
+```csharp
+int minimumDistance = length >= 16 ? 4 : 3;
+```
+
+После случайного выбора проверяется расстояние до уже выбранных дорог.
+
+Если новая координата слишком близко, она отбрасывается.
+
+Это делает карту более читаемой и предотвращает визуальную кашу.
+
+## Создание горизонтальных дорог
+
+```csharp
+foreach (int y in rows)
+	for (int x = 0; x < _mapWidth; x++)
+		_logicalMap[x, y] = TileType.RoadHorizontal;
+```
+
+Каждая выбранная строка становится полноценной горизонтальной дорогой.
+
+## Создание вертикальных дорог и перекрёстков
+
+```csharp
+foreach (int x in columns)
+	for (int y = 0; y < _mapHeight; y++)
+		_logicalMap[x, y] = _logicalMap[x, y] == TileType.RoadHorizontal
+			? TileType.Intersection
+			: TileType.RoadVertical;
+```
+
+Если вертикальная дорога попадает на горизонтальную, клетка превращается в перекрёсток.
+
+Таким образом, дороги не являются разрозненными объектами: они пересекаются и образуют связанную сеть.
+
+## Пешеходные переходы
+
+`AddCrosswalks` проверяет каждое пересечение.
+
+Если рядом находится горизонтальная дорога, добавляется горизонтальный переход.
+
+Если рядом находится вертикальная дорога, добавляется вертикальный переход.
+
+Переходы не размещаются в случайных местах — только около перекрёстков.
+
+## Кусты
+
+`AddNaturalDetails` просматривает свободные клетки и с небольшой вероятностью заменяет траву на куст.
+
+Дороги при этом не затрагиваются:
+
+```csharp
+_logicalMap[x, y] == TileType.Grass
+```
+
+---
+
+# 5. Выбор размера карты
+
+Метод `MapSizeSelector_SelectionChanged` получает размер из `Tag`.
+
+Например:
+
+```text
+"40,24"
+		↓
+ширина = 40
+высота = 24
+```
+
+Затем обновляются:
+
+```csharp
+_mapWidth = width;
+_mapHeight = height;
+```
+
+Создаётся новый массив и карта очищается.
+
+Все остальные операции — генерация, рисование и экспорт — автоматически используют новые размеры.
+
+---
+
+# 6. Масштабирование
+
+Метод `ZoomSlider_ValueChanged` записывает значение ползунка в `_zoom`.
+
+`UpdateDisplayedSize` изменяет размер `Image`:
+
+```csharp
+MapDisplay.Width = _mapWidth * TileSize * _zoom;
+MapDisplay.Height = _mapHeight * TileSize * _zoom;
+```
+
+Логические координаты карты не меняются. Меняется только отображение.
+
+`ScrollViewer` позволяет прокручивать увеличенную карту.
+
+---
+
+# 7. Сохранение в PNG
+
+Метод `SavePng_Click` открывает `SaveFileDialog`.
+
+Затем вызывается `RenderMapBitmap`, который создаёт карту в исходном размере.
+
+Для кодирования используется:
+
+```csharp
+PngBitmapEncoder encoder = new();
+encoder.Frames.Add(BitmapFrame.Create(RenderMapBitmap()));
+```
+
+После этого PNG записывается в выбранный файл.
+
+Масштаб интерфейса не влияет на итоговое изображение. Например, карта 26×16 сохраняется как изображение 2600×1600 пикселей.
+
+---
+
+# 8. Отрисовка карты
+
+```csharp
+private BitmapSource RenderMapBitmap()
+```
+
+Метод создаёт `RenderTargetBitmap` размером:
+
+```csharp
+_mapWidth * TileSize
+_mapHeight * TileSize
+```
+
+Далее он проходит по каждой клетке:
+
+```csharp
+_tileSet[_logicalMap[x, y]]
+```
+
+получает нужную картинку и рисует её в прямоугольнике:
+
+```csharp
+new Rect(x * TileSize, y * TileSize, TileSize, TileSize)
+```
+
+После рендеринга изображение сохраняется в `MapDisplay.Source`.
+
+---
+
+# 9. Новые изменения
+
+В текущую версию добавлены:
+
+1. **Связная случайная генерация дорог** с контролируемым расстоянием между магистралями.
+2. **Автоматическое создание перекрёстков** на пересечениях горизонтальных и вертикальных дорог.
+3. **Автоматические пешеходные переходы** возле перекрёстков.
+4. **Случайные кусты** только на свободных участках.
+5. **Сохранение карты в PNG** через `PngBitmapEncoder`.
+6. **Выбор размера карты** из списка готовых вариантов.
+7. **Масштабирование карты** от 50% до 250%.
+8. **Корректный перевод координат мыши** при увеличении и уменьшении карты.
+9. **Прокрутка большой карты** через `ScrollViewer`.
+
+# 10. Как пользоваться
+
+1. Выберите размер карты в списке «Размер».
+2. Нажмите «Сгенерировать дороги».
+3. При необходимости выберите инструмент и дорисуйте карту вручную.
+4. Измените масштаб ползунком.
+5. Используйте полосы прокрутки для перемещения по увеличенной карте.
+6. Нажмите «Сохранить PNG», чтобы экспортировать результат.

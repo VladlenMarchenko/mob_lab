@@ -1,0 +1,292 @@
+﻿using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using Microsoft.Win32;
+
+namespace PixelArtEditor;
+
+public enum DrawingTool
+{
+    Pixel,
+    Line,
+    Square,
+    Triangle,
+    Pan
+}
+
+public partial class MainWindow : Window
+{
+    private const int CellSize = 16;
+    private int _canvasWidth = 32;
+    private int _canvasHeight = 32;
+    private double _zoom = 1;
+    private Color[,] _pixels = new Color[32, 32];
+    private Color[,]? _previewPixels;
+    private DrawingTool _currentTool = DrawingTool.Pixel;
+    private Color _currentColor = Colors.Black;
+    private Point? _startPoint;
+    private bool _isPanning;
+    private Point _panStart;
+    private double _horizontalOffset;
+    private double _verticalOffset;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        PixelCanvas.Cursor = _currentTool == DrawingTool.Pan ? Cursors.Hand : Cursors.Pen;
+        ClearPixels();
+        RenderCanvas(_pixels);
+    }
+
+    private void Tool_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is RadioButton radioButton && Enum.TryParse(radioButton.Tag?.ToString(), out DrawingTool selectedTool))
+        {
+            _currentTool = selectedTool;
+            if (PixelCanvas is not null)
+            {
+                PixelCanvas.Cursor = selectedTool == DrawingTool.Pan ? Cursors.Hand : Cursors.Pen;
+            }
+        }
+    }
+
+    private void ColorSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ColorSelector.SelectedItem is ComboBoxItem item && item.Tag is string hex)
+        {
+            _currentColor = (Color)ColorConverter.ConvertFromString(hex);
+            ColorPreview.Background = new SolidColorBrush(_currentColor);
+        }
+    }
+
+    private void CanvasSizeSelector_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (CanvasSizeSelector.SelectedItem is not ComboBoxItem item || item.Tag is not string tag) return;
+        string[] values = tag.Split('x');
+        if (values.Length != 2 || !int.TryParse(values[0], out int width) || !int.TryParse(values[1], out int height)) return;
+        _canvasWidth = width;
+        _canvasHeight = height;
+        if (IsLoaded)
+        {
+            _pixels = new Color[_canvasWidth, _canvasHeight];
+            ClearPixels();
+            RenderCanvas(_pixels);
+        }
+    }
+
+    private void ZoomSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        _zoom = e.NewValue;
+        if (ZoomLabel != null) ZoomLabel.Text = $"{_zoom:P0}";
+        if (IsLoaded) UpdateCanvasDisplaySize();
+    }
+
+    private void SavePng_Click(object sender, RoutedEventArgs e)
+    {
+        SaveFileDialog dialog = new SaveFileDialog
+        {
+            Filter = "PNG изображение (*.png)|*.png",
+            FileName = "pixel-art.png",
+            AddExtension = true
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        PngBitmapEncoder encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(RenderCanvasBitmap(_pixels)));
+        using System.IO.FileStream stream = System.IO.File.Create(dialog.FileName);
+        encoder.Save(stream);
+    }
+
+    private void Clear_Click(object sender, RoutedEventArgs e)
+    {
+        ClearPixels();
+        RenderCanvas(_pixels);
+    }
+
+    private void Fill_Click(object sender, RoutedEventArgs e)
+    {
+        for (int x = 0; x < _canvasWidth; x++)
+            for (int y = 0; y < _canvasHeight; y++)
+                _pixels[x, y] = _currentColor;
+        RenderCanvas(_pixels);
+    }
+
+    private void ClearPixels()
+    {
+        for (int x = 0; x < _canvasWidth; x++)
+            for (int y = 0; y < _canvasHeight; y++)
+                _pixels[x, y] = Colors.White;
+    }
+
+    private void PixelCanvas_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_currentTool != DrawingTool.Pan || (e.ChangedButton != MouseButton.Left && e.ChangedButton != MouseButton.Middle)) return;
+        _isPanning = true;
+        _panStart = e.GetPosition(CanvasScrollViewer);
+        _horizontalOffset = CanvasScrollViewer.HorizontalOffset;
+        _verticalOffset = CanvasScrollViewer.VerticalOffset;
+        PixelCanvas.CaptureMouse();
+        e.Handled = true;
+    }
+
+    private void PixelCanvas_MouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_isPanning)
+        {
+            _isPanning = false;
+            PixelCanvas.ReleaseMouseCapture();
+            e.Handled = true;
+        }
+    }
+
+    private void PixelCanvas_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (_currentTool == DrawingTool.Pan) return;
+        Point pixel = GetPixelPosition(e.GetPosition(PixelCanvas));
+        _startPoint = pixel;
+        PixelCanvas.CaptureMouse();
+        if (_currentTool == DrawingTool.Pixel)
+        {
+            SetPixel(_pixels, pixel, _currentColor);
+            RenderCanvas(_pixels);
+        }
+        else
+        {
+            _previewPixels = ClonePixels(_pixels);
+            DrawTool(_previewPixels, pixel);
+            RenderCanvas(_previewPixels);
+        }
+    }
+
+    private void PixelCanvas_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_isPanning)
+        {
+            Point current = e.GetPosition(CanvasScrollViewer);
+            CanvasScrollViewer.ScrollToHorizontalOffset(_horizontalOffset - (current.X - _panStart.X));
+            CanvasScrollViewer.ScrollToVerticalOffset(_verticalOffset - (current.Y - _panStart.Y));
+            return;
+        }
+        if (_startPoint is null || e.LeftButton != MouseButtonState.Pressed || _currentTool == DrawingTool.Pan) return;
+        Point pixel = GetPixelPosition(e.GetPosition(PixelCanvas));
+        if (_currentTool == DrawingTool.Pixel)
+        {
+            SetPixel(_pixels, pixel, _currentColor);
+            RenderCanvas(_pixels);
+        }
+        else
+        {
+            _previewPixels = ClonePixels(_pixels);
+            DrawTool(_previewPixels, pixel);
+            RenderCanvas(_previewPixels);
+        }
+    }
+
+    private void PixelCanvas_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_currentTool == DrawingTool.Pan || _startPoint is null) return;
+        if (_currentTool != DrawingTool.Pixel && _previewPixels is not null) CopyPixels(_previewPixels, _pixels);
+        _previewPixels = null;
+        _startPoint = null;
+        PixelCanvas.ReleaseMouseCapture();
+        RenderCanvas(_pixels);
+    }
+
+    private Point GetPixelPosition(Point position)
+    {
+        int x = Math.Clamp((int)(position.X / (CellSize * _zoom)), 0, _canvasWidth - 1);
+        int y = Math.Clamp((int)(position.Y / (CellSize * _zoom)), 0, _canvasHeight - 1);
+        return new Point(x, y);
+    }
+
+    private void DrawTool(Color[,] target, Point endPoint)
+    {
+        if (_startPoint is null) return;
+        int x1 = (int)_startPoint.Value.X, y1 = (int)_startPoint.Value.Y;
+        int x2 = (int)endPoint.X, y2 = (int)endPoint.Y;
+        switch (_currentTool)
+        {
+            case DrawingTool.Line: DrawLine(target, x1, y1, x2, y2); break;
+            case DrawingTool.Square: DrawSquare(target, x1, y1, x2, y2); break;
+            case DrawingTool.Triangle: DrawTriangle(target, x1, y1, x2, y2); break;
+        }
+    }
+
+    private void DrawLine(Color[,] target, int x1, int y1, int x2, int y2)
+    {
+        int dx = Math.Abs(x2 - x1), sx = x1 < x2 ? 1 : -1;
+        int dy = -Math.Abs(y2 - y1), sy = y1 < y2 ? 1 : -1;
+        int error = dx + dy;
+        while (true)
+        {
+            SetPixel(target, new Point(x1, y1), _currentColor);
+            if (x1 == x2 && y1 == y2) break;
+            int doubleError = 2 * error;
+            if (doubleError >= dy) { error += dy; x1 += sx; }
+            if (doubleError <= dx) { error += dx; y1 += sy; }
+        }
+    }
+
+    private void DrawSquare(Color[,] target, int x1, int y1, int x2, int y2)
+    {
+        int left = Math.Min(x1, x2), right = Math.Max(x1, x2), top = Math.Min(y1, y2), bottom = Math.Max(y1, y2);
+        DrawLine(target, left, top, right, top); DrawLine(target, right, top, right, bottom);
+        DrawLine(target, right, bottom, left, bottom); DrawLine(target, left, bottom, left, top);
+    }
+
+    private void DrawTriangle(Color[,] target, int x1, int y1, int x2, int y2)
+    {
+        int left = Math.Min(x1, x2), right = Math.Max(x1, x2), top = Math.Min(y1, y2), bottom = Math.Max(y1, y2), center = (left + right) / 2;
+        DrawLine(target, center, top, left, bottom); DrawLine(target, left, bottom, right, bottom); DrawLine(target, right, bottom, center, top);
+    }
+
+    private void SetPixel(Color[,] target, Point point, Color color)
+    {
+        int x = (int)point.X, y = (int)point.Y;
+        if (x >= 0 && x < _canvasWidth && y >= 0 && y < _canvasHeight) target[x, y] = color;
+    }
+
+    private void RenderCanvas(Color[,] source)
+    {
+        PixelCanvas.Source = RenderCanvasBitmap(source);
+        UpdateCanvasDisplaySize();
+    }
+
+    private BitmapSource RenderCanvasBitmap(Color[,] source)
+    {
+        int width = _canvasWidth * CellSize, height = _canvasHeight * CellSize;
+        DrawingVisual visual = new DrawingVisual();
+        using (DrawingContext context = visual.RenderOpen())
+        {
+            context.DrawRectangle(Brushes.White, null, new Rect(0, 0, width, height));
+            Pen gridPen = new Pen(new SolidColorBrush(Color.FromRgb(215, 215, 215)), 1);
+            for (int x = 0; x < _canvasWidth; x++) for (int y = 0; y < _canvasHeight; y++)
+                context.DrawRectangle(new SolidColorBrush(source[x, y]), gridPen, new Rect(x * CellSize, y * CellSize, CellSize, CellSize));
+        }
+        RenderTargetBitmap bitmap = new(width, height, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private void UpdateCanvasDisplaySize()
+    {
+        PixelCanvas.Width = _canvasWidth * CellSize * _zoom;
+        PixelCanvas.Height = _canvasHeight * CellSize * _zoom;
+    }
+
+    private Color[,] ClonePixels(Color[,] source)
+    {
+        Color[,] copy = new Color[_canvasWidth, _canvasHeight];
+        CopyPixels(source, copy);
+        return copy;
+    }
+
+    private void CopyPixels(Color[,] source, Color[,] target)
+    {
+        for (int x = 0; x < _canvasWidth; x++) for (int y = 0; y < _canvasHeight; y++) target[x, y] = source[x, y];
+    }
+}

@@ -1,0 +1,30 @@
+﻿# План работы и разбор MainWindow — PixelArtEditor
+
+## Understanding
+MainWindow состоит из MainWindow.xaml (интерфейс) и MainWindow.xaml.cs (логика). Изображение хранится в Color[,] и отображается через RenderTargetBitmap.
+
+## Assumptions
+- Размеры холста: 16x16, 24x24, 32x32, 48x48, 64x64.
+- Масштаб меняет отображение, а Лапка перемещает ScrollViewer.
+
+## Approach
+XAML содержит кнопки, инструменты, цвет, размер, масштаб и Image. C# обрабатывает мышь, изменяет массив, рисует фигуры, экспортирует PNG и перемещает холст.
+
+## Key Files
+- MainWindow.xaml — интерфейс.
+- MainWindow.xaml.cs — пиксели, линии, фигуры, PNG, масштаб и Лапка.
+
+## Risks
+- При смене размера создаётся новый пустой холст.
+
+# Steps
+## Step 1. Интерфейс
+Window связывается с MainWindow. Кнопки вызывают Clear_Click, Fill_Click и SavePng_Click. RadioButton выбирают Pixel, Line, Square, Triangle или Pan через Tag. CanvasSizeSelector выбирает размеры, ZoomSlider задаёт 50–400%, ScrollViewer содержит PixelCanvas.
+## Step 2. Модель
+_pixels — массив Color[,], _canvasWidth и _canvasHeight — размеры, _zoom — масштаб, _previewPixels — предпросмотр фигур.
+## Step 3. Рисование
+GetPixelPosition учитывает CellSize и _zoom. SetPixel рисует клетку. DrawLine использует алгоритм Брезенхэма. DrawSquare и DrawTriangle строят фигуры.
+## Step 4. Отрисовка
+RenderCanvasBitmap проходит по массиву, рисует прямоугольники через DrawingContext и создаёт RenderTargetBitmap.
+## Step 5. Новые изменения
+1. Сохранение PNG через SaveFileDialog и PngBitmapEncoder. 2. Выбор размера. 3. Масштаб 50–400%. 4. Лапка и панорамирование ScrollViewer. 5. Учёт масштаба в координатах мыши.
